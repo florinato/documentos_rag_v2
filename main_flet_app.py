@@ -23,8 +23,16 @@ def main(page: ft.Page):
     state = {"selected_document_id": None, "selected_prompt_name": None}
 
     # --- Componentes UI ---
-    doc_dropdown = ft.Dropdown(label="1. Selecciona un Tratado para Consultar", on_change=lambda e: set_state("selected_document_id", e.control.value))
-    prompt_dropdown_chat = ft.Dropdown(label="2. Selecciona una Personalidad", on_change=lambda e: set_state("selected_prompt_name", e.control.value))
+    doc_dropdown = ft.Dropdown(
+        label="1. Selecciona un Tratado para Consultar", 
+        on_change=lambda e: set_state("selected_document_id", e.control.value),
+        expand=True  # <--- CAMBIO 1
+    )
+    prompt_dropdown_chat = ft.Dropdown(
+        label="2. Selecciona una Personalidad", 
+        on_change=lambda e: set_state("selected_prompt_name", e.control.value),
+        expand=True  # <--- CAMBIO 2
+    )
     chat_view = ft.ListView(expand=True, auto_scroll=True, spacing=10)
     user_input = ft.TextField(label="Escribe tu pregunta...", expand=True, multiline=True, shift_enter=True)
     send_button = ft.IconButton(icon=ft.Icons.SEND, tooltip="Enviar Pregunta")
@@ -67,7 +75,6 @@ def main(page: ft.Page):
                     )
                 )
             )
-            # Usar el título para el dropdown pero el ID como valor
             doc_options.append(ft.dropdown.Option(key=doc_info['id'], text=doc_info['titulo']))
 
         doc_dropdown.options = doc_options
@@ -191,7 +198,13 @@ def main(page: ft.Page):
     tabs = ft.Tabs(
         selected_index=0, expand=True,
         tabs=[
-            ft.Tab(text="Consulta", icon=ft.Icons.QUESTION_ANSWER, content=ft.Column(controls=[ft.Row([doc_dropdown, prompt_dropdown_chat]), ft.Divider(), chat_view, ft.Divider(), ft.Row([user_input, send_button, progress_ring_chat])], expand=True)),
+            ft.Tab(text="Consulta", icon=ft.Icons.QUESTION_ANSWER, content=ft.Column(controls=[
+                ft.Row([doc_dropdown, prompt_dropdown_chat], spacing=10), # <--- CAMBIO 3
+                ft.Divider(), 
+                chat_view, 
+                ft.Divider(), 
+                ft.Row([user_input, send_button, progress_ring_chat])
+            ], expand=True)),
             ft.Tab(text="Biblioteca", icon=ft.Icons.BOOK, content=ft.Column(controls=[ft.Text("Añadir Nuevo Tratado", style=ft.TextThemeStyle.HEADLINE_SMALL), ft.Row([source_input, browse_button, add_button]), progress_indicator_library, ft.Divider(), ft.Text("Tratados en la Biblioteca", style=ft.TextThemeStyle.HEADLINE_SMALL), library_list_view], expand=True, spacing=10)),
             ft.Tab(text="Personalidades", icon=ft.Icons.PSYCHOLOGY, content=ft.Column(controls=[prompt_dropdown_editor, prompt_name_input, prompt_content_input, ft.Row([save_prompt_button, new_prompt_button])], expand=True))
         ]
@@ -200,5 +213,6 @@ def main(page: ft.Page):
     update_library_list()
     update_prompt_dropdowns()
 
+# No es necesario cambiar nada debajo de esta línea
 if __name__ == "__main__":
     ft.app(target=main)
