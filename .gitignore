@@ -1,0 +1,7 @@
+*.pyc
+*.pyo
+__pycache__/
+env_python/
+biblioteca_db/
+storage/
+.env
