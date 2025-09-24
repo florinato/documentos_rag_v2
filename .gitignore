@@ -5,3 +5,5 @@ env_python/
 biblioteca_db/
 storage/
 .env
+chat.py
+chat_academico.py
