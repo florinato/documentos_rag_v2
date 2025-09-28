@@ -1,6 +1,5 @@
-# analyzer.py (Versión Bibliotecario)
+# analyzer.py (Versión Final - Índice Maestro Holístico)
 import json
-import os
 import re
 
 from gemini_provider import setup_gemini
@@ -12,51 +11,57 @@ except Exception as e:
     print(f"❌ ANALYZER: Error fatal al inicializar Gemini: {e}")
     generation_model = None
 
-def analyze_with_gemini(tema: str, text: str) -> dict | None:
+def create_master_index(full_text: str, filename: str) -> dict | None:
     """
-    Usa Gemini para analizar un texto y extraer metadata bibliográfica.
+    Analiza un documento de forma holística para crear un "Índice Maestro" detallado,
+    aprovechando una gran ventana de contexto.
     """
-    if not generation_model:
-        return None
+    if not generation_model: return None
+
+    # Límite seguro para no exceder la cuota de tokens por minuto en una sola llamada.
+    # 200,000 caracteres son ~50,000 tokens, muy por debajo del límite de 250,000 TPM.
+    # Esto es suficiente para la mayoría de documentos o las partes más importantes.
+    MAX_CHARS_FOR_ANALYSIS = 200000
+    text_sample = full_text[:MAX_CHARS_FOR_ANALYSIS]
 
     prompt = f"""
-    Eres un Bibliotecario de Investigación experto. Tu tarea es analizar el texto de un documento y extraer sus datos bibliográficos clave.
+    Eres un Editor Senior y un Agente de Catalogación de IA. Tu misión es analizar el siguiente documento para crear un "Índice Maestro" en formato JSON.
 
     PROCESO A SEGUIR:
-    1.  **Analizar Contenido:** Lee el "Contenido del Documento" para identificar su estructura y datos.
-    2.  **Extraer Metadatos:** Basándote en el contenido, completa los siguientes campos:
-        -   "titulo": El título completo y formal del documento.
-        -   "autor": El autor o autores principales. Si no se menciona, devuelve "No disponible".
-        -   "fecha_publicacion": El año o la fecha de publicación original. Si no se encuentra, devuelve "No disponible".
-        -   "fuente_original": La editorial, institución o revista que lo publicó. Si no se encuentra, devuelve "No disponible".
-        -   "resumen": Un resumen conciso de 2-4 frases sobre el propósito y contenido del documento.
-        -   "tags": De 3 a 5 palabras clave o conceptos fundamentales tratados en el texto.
+    1.  **Datos Bibliográficos:** Busca en el texto para encontrar el título completo, autor(es), y fecha de publicación.
+    2.  **Resumen Global:** Escribe un resumen de 3-5 frases que capture la tesis y el contenido principal del documento.
+    3.  **Índice Estructurado:** Identifica la tabla de contenidos o la estructura de capítulos/secciones. Crea un mapa donde cada clave sea el nombre del capítulo/sección y el valor sea un resumen de una sola frase de su contenido. Si no hay capítulos claros, crea secciones lógicas (ej: "Introducción", "Desarrollo del Tema Principal", "Conclusiones").
+    4.  **Temas Fundamentales:** Extrae de 5 a 7 'tags' que representen los conceptos clave del documento.
 
-    REGLAS DE SALIDA:
-    - Tu respuesta DEBE ser un único bloque de código JSON.
-    - Si un campo no se puede determinar a partir del texto, DEBES usar el valor "No disponible". NO inventes información.
+    REGLAS IMPORTANTES:
+    - Analiza el texto proporcionado de forma completa para encontrar la información.
+    - Si un campo no se puede determinar, usa el valor "No disponible". NO inventes información.
+    - El formato de salida DEBE ser un único bloque de código JSON válido.
 
     ---
-    Tema/Nombre de archivo (para contexto): "{tema}"
+    Nombre de Archivo (para contexto): "{filename}"
     ---
-    Contenido del Documento (primeros 6000 caracteres):
-    "{text[:6000]}"
+    Contenido del Documento (hasta {MAX_CHARS_FOR_ANALYSIS} caracteres):
+    "{text_sample}"
     ---
 
-    RESPUESTA JSON:
+    RESPUESTA JSON (Índice Maestro):
     ```json
     {{
       "titulo": "...",
       "autor": "...",
       "fecha_publicacion": "...",
-      "fuente_original": "...",
-      "resumen": "...",
+      "resumen_global": "...",
+      "indice_estructurado": {{
+        "Capítulo 1: Nombre del Capítulo": "Resumen de una frase de este capítulo.",
+        "Capítulo 2: Otro Nombre": "Resumen de una frase de este otro capítulo."
+      }},
       "tags": ["tag1", "tag2", "tag3"]
     }}
     ```
     """
     try:
-        print("  -> Analyzer: Solicitando extracción de datos bibliográficos a Gemini...")
+        print(f"  -> Analyzer: Enviando {len(text_sample)} caracteres a Gemini para generar el Índice Maestro...")
         response = generation_model.generate_content(prompt)
         
         json_match = re.search(r'```json\s*([\s\S]*?)\s*```', response.text)
@@ -67,12 +72,9 @@ def analyze_with_gemini(tema: str, text: str) -> dict | None:
         json_str = json_match.group(1)
         analysis_result = json.loads(json_str)
         
-        print("  -> ✅ Analyzer: Datos bibliográficos extraídos exitosamente.")
+        print("  -> ✅ Analyzer: Índice Maestro generado exitosamente.")
         return analysis_result
 
-    except json.JSONDecodeError as e:
-        print(f"  -> ❌ Analyzer: Error decodificando el JSON de la respuesta: {e}")
-        return None
     except Exception as e:
-        print(f"  -> ❌ Analyzer: Error inesperado durante el análisis: {e}")
+        print(f"  -> ❌ Analyzer: Error inesperado durante la generación del Índice Maestro: {e}")
         return None

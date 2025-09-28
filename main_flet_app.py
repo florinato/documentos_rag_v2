@@ -20,18 +20,22 @@ def main(page: ft.Page):
         page.add(ft.Text(f"Error fatal al iniciar el backend: {e}", color="red"))
         return
 
-    state = {"selected_document_id": None, "selected_prompt_name": None}
+    state = {
+        "selected_document_id": None,
+        "selected_prompt_name": None,
+        "conversation_history": [] # <-- Añadimos el historial de conversación al estado
+    }
 
     # --- Componentes UI ---
     doc_dropdown = ft.Dropdown(
-        on_change=lambda e: set_state("selected_document_id", e.control.value),
+        on_change=lambda e: set_state("selected_document_id", e.control.value) or clear_chat_history(),
         hint_text="Selecciona un documento...",
-        expand=True  # <--- SOLUCIÓN
+        expand=True
     )
     prompt_dropdown_chat = ft.Dropdown(
         on_change=lambda e: set_state("selected_prompt_name", e.control.value),
         hint_text="Selecciona una personalidad...",
-        expand=True  # <--- SOLUCIÓN
+        expand=True
     )
     chat_view = ft.ListView(expand=True, auto_scroll=True, spacing=10)
     user_input = ft.TextField(label="Escribe tu pregunta...", expand=True, multiline=True, shift_enter=True)
@@ -49,6 +53,12 @@ def main(page: ft.Page):
 
     def set_state(key, value):
         state[key] = value
+
+    def clear_chat_history():
+        """Limpia el historial y la vista de chat al cambiar de documento."""
+        state["conversation_history"] = []
+        chat_view.controls.clear()
+        page.update()
 
     def show_snackbar(message, color):
         page.snack_bar = ft.SnackBar(content=ft.Text(message), bgcolor=color)
@@ -82,38 +92,30 @@ def main(page: ft.Page):
         doc_dropdown.options = doc_options
         page.update()
 
+    # --- FUNCIÓN CORREGIDA ---
     def handle_add_document(e):
+        """Maneja el evento de añadir un documento con una sola llamada al pipeline."""
         source = source_input.value
         if not source:
             show_snackbar("Por favor, introduce una URL o selecciona un archivo.", ft.Colors.AMBER)
             return
+
         add_button.disabled = True
-        progress_indicator_library.controls[1].value = "Paso 1/3: Extrayendo texto..."
         progress_indicator_library.visible = True
         page.update()
-        extract_result = rag_system.extract_and_analyze(source)
-        if not extract_result["success"]:
-            show_snackbar(extract_result["message"], ft.Colors.RED)
-            add_button.disabled = False; progress_indicator_library.visible = False
-            page.update()
-            return
-        progress_indicator_library.controls[1].value = "Paso 2/3: Analizando con IA..."
-        page.update()
-        progress_indicator_library.controls[1].value = "Paso 3/3: Indexando en la biblioteca..."
-        page.update()
-        index_result = rag_system.chunk_and_index(
-            source=source,
-            text_to_chunk=extract_result["extracted_text"],
-            analysis_data=extract_result["analysis_data"]
-        )
+
+        # Llamada única al nuevo pipeline de ingesta
+        result = rag_system.add_document_pipeline(source)
+        
         add_button.disabled = False
         progress_indicator_library.visible = False
         source_input.value = ""
-        if index_result["success"]:
-            show_snackbar(index_result["message"], ft.Colors.GREEN)
+        
+        if result["success"]:
+            show_snackbar(result["message"], ft.Colors.GREEN)
             update_library_list()
         else:
-            show_snackbar(index_result["message"], ft.Colors.RED)
+            show_snackbar(result["message"], ft.Colors.RED)
         page.update()
 
     def handle_delete_document(e):
@@ -131,8 +133,23 @@ def main(page: ft.Page):
         chat_view.controls.append(ft.Card(ft.Container(ft.Text(f"Tú: {question}"), padding=10)))
         user_input.value = ""; page.update()
 
-        answer, context, _ = rag_system.query_document(question, state["selected_document_id"], state["selected_prompt_name"])
+        # Añadir pregunta al historial ANTES de la llamada
+        state["conversation_history"].append({"role": "user", "content": question})
+
+        answer, context, _ = rag_system.query_document_pipeline(
+            question=question, 
+            document_id=state["selected_document_id"], 
+            prompt_name=state["selected_prompt_name"],
+            conversation_history=state["conversation_history"] # Pasamos el historial
+        )
         
+        # Añadir respuesta al historial
+        state["conversation_history"].append({"role": "assistant", "content": answer})
+
+        # Limitar el historial para que no crezca indefinidamente
+        if len(state["conversation_history"]) > 6: # Mantener los últimos 3 intercambios
+            state["conversation_history"] = state["conversation_history"][-6:]
+
         sources_view = ft.ExpansionTile(
             title=ft.Text("Fuentes Consultadas"),
             controls=[
@@ -206,25 +223,7 @@ def main(page: ft.Page):
         selected_index=0, expand=True,
         tabs=[
             ft.Tab(text="Consulta", icon=ft.Icons.QUESTION_ANSWER, content=ft.Column(controls=[
-                ft.Row(
-                    [
-                        ft.Column(
-                            [
-                                ft.Text("1. Selecciona un Tratado para Consultar", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
-                                doc_dropdown,
-                            ],
-                            expand=True
-                        ),
-                        ft.Column(
-                            [
-                                ft.Text("2. Selecciona una Personalidad", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
-                                prompt_dropdown_chat,
-                            ],
-                            expand=True
-                        ),
-                    ],
-                    spacing=10
-                ),
+                ft.Row([doc_dropdown, prompt_dropdown_chat], spacing=10),
                 ft.Divider(), 
                 chat_view, 
                 ft.Divider(), 
